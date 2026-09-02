@@ -121,9 +121,14 @@ def clean_and_structure_df(df):
     return df_clean
 
 def match_and_aggregate(processed_files):
-    """Merges data by Roll No or Fuzzy Name Match. Inserts 'N/A' for missing subjects."""
+    """Merges data by Roll No or Fuzzy Name Match. Keeps exact marks for available subjects and 'N/A' for missing ones."""
     master_dict = {}
-    all_subjects = [item['subject'] for item in processed_files]
+    all_subjects = []
+
+    # Preserve unique order of subjects
+    for item in processed_files:
+        if item['subject'] not in all_subjects:
+            all_subjects.append(item['subject'])
 
     for item in processed_files:
         df = item['data']
@@ -155,7 +160,7 @@ def match_and_aggregate(processed_files):
                         matched_key = key
                         break
 
-            # Add or update master dict
+            # Add or update student attendance
             if matched_key:
                 master_dict[matched_key][tot_col] = master_dict[matched_key].get(tot_col, 0) + curr_tot
                 master_dict[matched_key][att_col] = master_dict[matched_key].get(att_col, 0) + curr_att
@@ -171,8 +176,7 @@ def match_and_aggregate(processed_files):
                 }
 
     final_records = []
-    
-    # Format missing subject values as 'N/A' and compute overall percentage safely
+
     for key, rec in master_dict.items():
         row_dict = {'ID': rec['ID'], 'NAME': rec['NAME']}
         
@@ -184,9 +188,11 @@ def match_and_aggregate(processed_files):
             tot_c = f'TOTAL ({sub})'
             att_c = f'ATTENDANCE ({sub})'
 
+            # If present in this subject, show actual values
             if tot_c in rec and att_c in rec:
                 tot_val = rec[tot_c]
                 att_val = rec[att_c]
+                
                 row_dict[tot_c] = int(tot_val)
                 row_dict[att_c] = int(att_val)
                 
@@ -194,17 +200,18 @@ def match_and_aggregate(processed_files):
                 overall_att += att_val
                 has_any_subject = True
             else:
+                # If missing in this subject, write N/A
                 row_dict[tot_c] = "N/A"
                 row_dict[att_c] = "N/A"
 
+        # Calculate combined total across available subjects
         row_dict['OVERALL_TOTAL'] = int(overall_total) if has_any_subject else "N/A"
         row_dict['OVERALL_ATTENDANCE'] = int(overall_att) if has_any_subject else "N/A"
         row_dict['OVERALL_%'] = round((overall_att / overall_total * 100), 2) if (has_any_subject and overall_total > 0) else "N/A"
 
         final_records.append(row_dict)
 
-    final_df = pd.DataFrame(final_records)
-    return final_df
+    return pd.DataFrame(final_records)
 
 # --- STREAMLIT UI ---
 
