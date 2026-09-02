@@ -17,21 +17,17 @@ def extract_subject_from_text(text, filename=""):
     """
     Extracts Subject Name directly from text header like 'SUBJECT-Principles of cloud computing'
     """
-    # Regex search for 'SUBJECT-' or 'SUBJECT:' followed by subject name
     match = re.search(r'SUBJECT\s*[:-]\s*([^\n\r\|]+)', text, re.IGNORECASE)
     if match:
         subject_str = match.group(1).strip()
-        # Remove unwanted trailing/extra spaces
         subject_str = re.sub(r'\s+', ' ', subject_str)
         if subject_str:
             return subject_str.upper()
 
-    # Fallback to search for common semester/course patterns if explicit 'SUBJECT' keyword is absent
     course_match = re.search(r'(COURSE|PAPER|MODULE)\s*[:-]\s*([^\n\r\|]+)', text, re.IGNORECASE)
     if course_match:
         return course_match.group(2).strip().upper()
 
-    # Fallback to clean filename
     clean_file = re.sub(r'[^A-Za-z0-9]', ' ', filename.rsplit('.', 1)[0]).strip()
     return clean_file.upper() if clean_file else "UNKNOWN SUBJECT"
 
@@ -40,12 +36,10 @@ def extract_from_docx(file):
     rows = []
     full_text = ""
 
-    # Paragraphs (where title/subject header usually lives)
     for p in doc.paragraphs:
         if p.text.strip():
             full_text += p.text + "\n"
 
-    # Tables extraction
     for table in doc.tables:
         for row in table.rows:
             cell_texts = [cell.text.strip() for cell in row.cells]
@@ -74,7 +68,8 @@ def parse_to_dataframe(file):
 
     if ext in ['xlsx', 'xls']:
         df_raw = pd.read_excel(file)
-        full_text = " ".join(df_raw.astype(str).values.flatten())
+        # SAFE STRING JOINING FOR EXCEL
+        full_text = " ".join([str(val) for val in df_raw.values.ravel() if pd.notna(val)])
         subject_name = extract_subject_from_text(full_text, file.name)
         cleaned_df = clean_and_structure_df(df_raw)
         return cleaned_df, subject_name
