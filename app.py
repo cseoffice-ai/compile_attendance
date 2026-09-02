@@ -14,9 +14,7 @@ st.write("Automatically extracts Subject Name, Roll No/ID, and Name from Word, E
 # --- HELPER FUNCTIONS ---
 
 def extract_subject_from_text(text, filename=""):
-    """
-    Extracts Subject Name directly from text header like 'SUBJECT-Principles of cloud computing'
-    """
+    """Extracts Subject Name directly from text header or filename."""
     match = re.search(r'SUBJECT\s*[:-]\s*([^\n\r\|]+)', text, re.IGNORECASE)
     if match:
         subject_str = match.group(1).strip()
@@ -68,7 +66,6 @@ def parse_to_dataframe(file):
 
     if ext in ['xlsx', 'xls']:
         df_raw = pd.read_excel(file)
-        # SAFE STRING JOINING FOR EXCEL
         full_text = " ".join([str(val) for val in df_raw.values.ravel() if pd.notna(val)])
         subject_name = extract_subject_from_text(full_text, file.name)
         cleaned_df = clean_and_structure_df(df_raw)
@@ -124,8 +121,9 @@ def clean_and_structure_df(df):
     return df_clean
 
 def match_and_aggregate(processed_files):
-    """Merges data by Roll No or Fuzzy Name Match."""
+    """Merges data by Roll No or Fuzzy Name Match. Inserts 'N/A' for missing subjects."""
     master_dict = {}
+    all_subjects = [item['subject'] for item in processed_files]
 
     for item in processed_files:
         df = item['data']
@@ -172,17 +170,40 @@ def match_and_aggregate(processed_files):
                     att_col: curr_att
                 }
 
-    final_df = pd.DataFrame(list(master_dict.values())).fillna(0)
+    final_records = []
+    
+    # Format missing subject values as 'N/A' and compute overall percentage safely
+    for key, rec in master_dict.items():
+        row_dict = {'ID': rec['ID'], 'NAME': rec['NAME']}
+        
+        overall_total = 0
+        overall_att = 0
+        has_any_subject = False
 
-    # Compute Overall Totals across all subjects
-    tot_cols = [c for c in final_df.columns if c.startswith('TOTAL (')]
-    att_cols = [c for c in final_df.columns if c.startswith('ATTENDANCE (')]
+        for sub in all_subjects:
+            tot_c = f'TOTAL ({sub})'
+            att_c = f'ATTENDANCE ({sub})'
 
-    if tot_cols and att_cols:
-        final_df['OVERALL_TOTAL'] = final_df[tot_cols].sum(axis=1)
-        final_df['OVERALL_ATTENDANCE'] = final_df[att_cols].sum(axis=1)
-        final_df['OVERALL_%'] = (final_df['OVERALL_ATTENDANCE'] / final_df['OVERALL_TOTAL'] * 100).round(2).fillna(0)
+            if tot_c in rec and att_c in rec:
+                tot_val = rec[tot_c]
+                att_val = rec[att_c]
+                row_dict[tot_c] = int(tot_val)
+                row_dict[att_c] = int(att_val)
+                
+                overall_total += tot_val
+                overall_att += att_val
+                has_any_subject = True
+            else:
+                row_dict[tot_c] = "N/A"
+                row_dict[att_c] = "N/A"
 
+        row_dict['OVERALL_TOTAL'] = int(overall_total) if has_any_subject else "N/A"
+        row_dict['OVERALL_ATTENDANCE'] = int(overall_att) if has_any_subject else "N/A"
+        row_dict['OVERALL_%'] = round((overall_att / overall_total * 100), 2) if (has_any_subject and overall_total > 0) else "N/A"
+
+        final_records.append(row_dict)
+
+    final_df = pd.DataFrame(final_records)
     return final_df
 
 # --- STREAMLIT UI ---
